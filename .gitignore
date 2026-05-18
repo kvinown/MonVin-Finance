@@ -1,0 +1,46 @@
+# =========================
+# 1. ATURAN NODE.JS (Untuk Backend & Web-App)
+# =========================
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+dist/
+build/
+.npm/
+
+# =========================
+# 2. ATURAN ANDROID & GRADLE (Untuk Mobile-App)
+# =========================
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+
+# Keystore dan Kunci Rahasia
+*.jks
+*.keystore
+
+# =========================
+# 3. ATURAN EDITOR & OS
+# =========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db

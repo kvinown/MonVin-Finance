@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Transisi global saat berganti tema */
+  body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 font-sans transition-colors duration-300 antialiased;
+  }
+
+  /* Tipografi Serif Otoritatif untuk Judul Besar */
+  .font-display {
+    font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+  }
+}
+
+@layer components {
+  /* Komponen Form Input Kustom */
+  .input-base {
+    @apply w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm tracking-wide focus:outline-none focus:border-slate-400 dark:focus:border-slate-600 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600;
+  }
+
+  /* Komponen Tombol Utama (McKinsey Style: Kaku & Solid) */
+  .btn-slate-primary {
+    @apply w-full py-2.5 bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-900 font-medium rounded-lg text-sm tracking-wide hover:bg-slate-800 dark:hover:bg-slate-200 active:scale-[0.99] transition-all shadow-sm shadow-slate-950/10;
+  }
+
+  /* Label Form */
+  .label-base {
+    @apply block text-xs font-semibold tracking-wider uppercase text-slate-500 dark:text-slate-400 mb-1.5;
+  }
+}

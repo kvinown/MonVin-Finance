@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  username     String        @unique
+  passwordHash String
+  name         String
+  isActive     Boolean       @default(true)
+  theme        Theme         @default(DARK)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  transactions Transaction[]
+  wallets      Wallet[]
+}
+
+model Wallet {
+  id        String     @id @default(uuid())
+  name      String     
+  type      WalletType 
+  balance   Float      @default(0) 
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+
+  transactions Transaction[]
+}
+
+model Category {
+  id        String       @id @default(uuid())
+  name      String       
+  type      CategoryType
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Float
+  note        String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  walletId    String
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum WalletType {
+  CASH
+  BANK
+  E_WALLET
+}
+
+enum Theme {
+  LIGHT
+  DARK
+}
