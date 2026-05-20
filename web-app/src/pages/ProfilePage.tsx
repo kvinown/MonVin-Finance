@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
-import { User, Shield, LogOut, Edit2, Check, X, Moon, Sun } from "lucide-react";
+import { User, Shield, LogOut, Edit2, Check, X, Moon, Sun, Calendar } from "lucide-react";
 
 export const ProfilePage: React.FC = () => {
 	const { user, logout, updateUserContext } = useAuth();
@@ -16,19 +16,18 @@ export const ProfilePage: React.FC = () => {
 	const [formData, setFormData] = useState({
 		name: "",
 		username: "",
-		age: "",
+		birthDate: "",
 		status: "",
 		field: "",
 		location: "",
 	});
 
-	// Isi nilai awal saat masuk halaman
 	useEffect(() => {
 		if (user) {
 			setFormData({
 				name: user.name || "",
 				username: user.username || "",
-				age: user.age || "",
+				birthDate: user.birthDate || "",
 				status: user.status || "",
 				field: user.field || "",
 				location: user.location || "",
@@ -36,27 +35,45 @@ export const ProfilePage: React.FC = () => {
 		}
 	}, [user]);
 
+	// Fungsi Hitung Umur Real-time
+	const calculateAge = (dob: string) => {
+		if (!dob) return "-";
+		const today = new Date();
+		const birthDateObj = new Date(dob);
+		let age = today.getFullYear() - birthDateObj.getFullYear();
+		const m = today.getMonth() - birthDateObj.getMonth();
+		if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
+			age--;
+		}
+		return age;
+	};
+
 	const handleSaveProfile = async () => {
 		if (!user) return;
 		setIsSubmitting(true);
 		try {
 			const userRef = doc(db, "users", user.id);
-			await updateDoc(userRef, {
-				name: formData.name,
-				username: formData.username,
-				age: formData.age,
-				status: formData.status,
-				field: formData.field,
-				location: formData.location,
-				updatedAt: new Date().toISOString(),
-			});
+			// Menggunakan setDoc dengan merge: true menjamin data tersimpan
+			// tanpa menghapus field lain jika struktur database tidak rapi
+			await setDoc(
+				userRef,
+				{
+					name: formData.name,
+					username: formData.username,
+					birthDate: formData.birthDate,
+					status: formData.status,
+					field: formData.field,
+					location: formData.location,
+					updatedAt: new Date().toISOString(),
+				},
+				{ merge: true },
+			);
 
-			// Update UI seketika
 			updateUserContext(formData);
-			showToast("Profil berhasil diperbarui", "success");
+			showToast("Profil berhasil diperbarui dan tersimpan", "success");
 			setIsEditing(false);
 		} catch (err) {
-			showToast("Gagal memperbarui profil", "error");
+			showToast("Gagal memperbarui profil ke database", "error");
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -150,44 +167,46 @@ export const ProfilePage: React.FC = () => {
 						<div className="pt-4 border-t border-slate-100 dark:border-slate-800">
 							<h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Data Personalisasi AI (Opsional)</h4>
 							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<label className="label-base">Umur</label>
+								<div className="col-span-2 sm:col-span-1">
+									<label className="label-base flex justify-between">
+										Tanggal Lahir
+										{formData.birthDate && <span className="text-blue-600 lowercase normal-case">({calculateAge(formData.birthDate)} thn)</span>}
+									</label>
 									<input
-										type="number"
-										placeholder="Contoh: 22"
+										type="date"
 										className="input-base"
-										value={formData.age}
-										onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+										value={formData.birthDate}
+										onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
 										disabled={!isEditing}
 									/>
 								</div>
-								<div>
+								<div className="col-span-2 sm:col-span-1">
 									<label className="label-base">Status Profesi</label>
 									<input
 										type="text"
-										placeholder="Contoh: Mahasiswa, Karyawan"
+										placeholder="Mis: Mahasiswa, Karyawan"
 										className="input-base"
 										value={formData.status}
 										onChange={(e) => setFormData({ ...formData, status: e.target.value })}
 										disabled={!isEditing}
 									/>
 								</div>
-								<div>
+								<div className="col-span-2 sm:col-span-1">
 									<label className="label-base">Bidang / Jurusan</label>
 									<input
 										type="text"
-										placeholder="Contoh: IT, Marketing"
+										placeholder="Mis: IT, Hukum"
 										className="input-base"
 										value={formData.field}
 										onChange={(e) => setFormData({ ...formData, field: e.target.value })}
 										disabled={!isEditing}
 									/>
 								</div>
-								<div>
+								<div className="col-span-2 sm:col-span-1">
 									<label className="label-base">Domisili Kota</label>
 									<input
 										type="text"
-										placeholder="Contoh: Bandung, Jakarta"
+										placeholder="Mis: Bandung, Jakarta"
 										className="input-base"
 										value={formData.location}
 										onChange={(e) => setFormData({ ...formData, location: e.target.value })}

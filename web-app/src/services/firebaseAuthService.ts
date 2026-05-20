@@ -3,8 +3,10 @@ import {
 	signInWithEmailAndPassword,
 	updateProfile,
 	signOut,
-	GoogleAuthProvider, // Tambahan
-	signInWithPopup, // Tambahan
+	GoogleAuthProvider,
+	signInWithPopup,
+	sendPasswordResetEmail, // Tambahan
+	updatePassword, // Tambahan
 } from "firebase/auth";
 import {
 	doc,
@@ -18,7 +20,7 @@ import {
 import { auth, db } from "../config/firebase";
 
 // Inisialisasi Provider Google
-const googleProvider = new GoogleAuthProvider()
+const googleProvider = new GoogleAuthProvider();
 
 export const firebaseAuthService = {
 	// 1. Cek Ketersediaan Username
@@ -129,6 +131,35 @@ export const firebaseAuthService = {
 				return { success: false, message: "Proses login Google dibatalkan." };
 			}
 			return { success: false, message: "Gagal menghubungkan dengan Google." };
+		}
+	},
+
+	// FITUR LUPA PASSWORD
+	resetPassword: async (email: string) => {
+		try {
+			await sendPasswordResetEmail(auth, email);
+			return { success: true, message: "Tautan reset kata sandi telah dikirim ke email Anda." };
+		} catch (error: any) {
+			console.error("Reset Password Error:", error);
+			return { success: false, message: "Gagal mengirim email reset. Pastikan email terdaftar." };
+		}
+	},
+
+	// FITUR GANTI PASSWORD (Saat sedang login di halaman Profil)
+	changePassword: async (newPassword: string) => {
+		try {
+			if (auth.currentUser) {
+				await updatePassword(auth.currentUser, newPassword);
+				return { success: true, message: "Kata sandi berhasil diperbarui." };
+			}
+			return { success: false, message: "Sesi tidak valid. Silakan login ulang." };
+		} catch (error: any) {
+			console.error("Change Password Error:", error);
+			// Firebase mensyaratkan user harus "baru saja login" untuk mengganti password
+			if (error.code === "auth/requires-recent-login") {
+				return { success: false, message: "Demi keamanan, silakan logout dan login kembali sebelum mengganti password." };
+			}
+			return { success: false, message: "Gagal memperbarui kata sandi." };
 		}
 	},
 };

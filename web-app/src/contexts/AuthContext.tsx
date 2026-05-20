@@ -8,8 +8,7 @@ interface User {
 	name: string;
 	email: string;
 	username: string;
-	// --- TAMBAHAN BARU ---
-	age?: string;
+	birthDate?: string; // Diubah dari age menjadi birthDate
 	status?: string;
 	field?: string;
 	location?: string;
@@ -19,7 +18,7 @@ interface AuthContextType {
 	user: User | null;
 	loading: boolean;
 	login: (token: string, userData: User) => void;
-	updateUserContext: (newData: Partial<User>) => void; // Fungsi baru untuk update state saat user ngedit profil
+	updateUserContext: (newData: Partial<User>) => void;
 	logout: () => void;
 }
 
@@ -43,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 							name: firestoreData.name || firebaseUser.displayName || "Pengguna",
 							email: firestoreData.email || firebaseUser.email || "",
 							username: firestoreData.username || "",
-							age: firestoreData.age || "",
+							birthDate: firestoreData.birthDate || "",
 							status: firestoreData.status || "",
 							field: firestoreData.field || "",
 							location: firestoreData.location || "",
@@ -71,7 +70,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 	const login = (token: string, userData: User) => setUser(userData);
 
-	// Fungsi khusus agar UI langsung berubah tanpa perlu refresh setelah edit profil
 	const updateUserContext = (newData: Partial<User>) => {
 		setUser((prev) => (prev ? { ...prev, ...newData } : null));
 	};
