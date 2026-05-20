@@ -1,9 +1,17 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.gms.google.services)
 }
-
+// Baca file local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
 android {
     namespace = "com.kevin.monvin.finance"
     compileSdk {
@@ -20,6 +28,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Masukkan API Key dari local.properties ke dalam BuildConfig
+        val geminiKey = localProperties.getProperty("GEMINI_API_KEY") ?: ""
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
     }
 
     buildTypes {
@@ -37,7 +48,12 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+}
+
+configurations.all {
+    exclude(group = "com.intellij", module = "annotations")
 }
 
 dependencies {
@@ -68,7 +84,9 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.room3.compiler)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     implementation(libs.googleid)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

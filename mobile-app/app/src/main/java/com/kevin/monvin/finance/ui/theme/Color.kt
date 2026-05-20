@@ -22,3 +22,11 @@ val Blue400 = Color(0xFF60A5FA)
 val Blue600 = Color(0xFF2563EB)
 val Red600 = Color(0xFFDC2626)
 val Green600 = Color(0xFF16A34A)
+
+// Tambahan Palet Slate & Amber
+val Slate300 = Color(0xFFCBD5E1)
+val Slate700 = Color(0xFF334155)
+val Slate950 = Color(0xFF020617)
+
+val Amber400 = Color(0xFFFBBF24)
+val Amber600 = Color(0xFFD97706)

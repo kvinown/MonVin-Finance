@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Wallet
@@ -21,24 +20,28 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.google.firebase.firestore.FirebaseFirestore
 import com.kevin.monvin.finance.data.SessionManager
-import com.kevin.monvin.finance.models.CreateWalletRequest
-import com.kevin.monvin.finance.models.WalletItem
-import com.kevin.monvin.finance.network.ApiClient
 import com.kevin.monvin.finance.ui.components.BottomNavigationBar
 import com.kevin.monvin.finance.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+
+// Data model lokal agar mandiri dari struktur Retrofit lama
+data class WalletData(val id: String, val name: String, val type: String, val balance: Double)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalletsScreen(sessionManager: SessionManager, navController: NavController) {
-    val token by sessionManager.userToken.collectAsState(initial = null)
+    val uid by sessionManager.userToken.collectAsState(initial = null) // Token adalah UID Firebase
     val coroutineScope = rememberCoroutineScope()
 
     // State Data
-    var walletList by remember { mutableStateOf<List<WalletItem>>(emptyList()) }
+    var walletList by remember { mutableStateOf<List<WalletData>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -55,20 +58,33 @@ fun WalletsScreen(sessionManager: SessionManager, navController: NavController) 
         format.format(amount).replace("Rp", "Rp ")
     }
 
-    // Fungsi fetch data dari API
+    // Fungsi fetch data dari Firestore
     val fetchWallets = {
-        if (!token.isNullOrEmpty()) {
+        if (!uid.isNullOrEmpty()) {
             coroutineScope.launch {
                 try {
                     isLoading = true
-                    val response = ApiClient.instance.getWallets("Bearer $token")
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        walletList = response.body()?.data ?: emptyList()
-                    } else {
-                        errorMessage = "Gagal mengambil data rekening."
+                    errorMessage = null
+
+                    val db = FirebaseFirestore.getInstance()
+                    val snapshot = db.collection("wallets")
+                        .whereEqualTo("userId", uid)
+                        .get()
+                        .await()
+
+                    val list = snapshot.documents.map { doc ->
+                        WalletData(
+                            id = doc.id,
+                            name = doc.getString("name") ?: "",
+                            type = doc.getString("type") ?: "CASH",
+                            balance = doc.getDouble("balance") ?: 0.0
+                        )
                     }
+
+                    // Urutkan berdasarkan abjad nama
+                    walletList = list.sortedBy { it.name }
                 } catch (e: Exception) {
-                    errorMessage = "Masalah jaringan jaringan."
+                    errorMessage = "Gagal mengambil data rekening: ${e.localizedMessage}"
                 } finally {
                     isLoading = false
                 }
@@ -76,7 +92,8 @@ fun WalletsScreen(sessionManager: SessionManager, navController: NavController) 
         }
     }
 
-    LaunchedEffect(token) {
+    // Trigger pengambilan data otomatis
+    LaunchedEffect(uid) {
         fetchWallets()
     }
 
@@ -209,7 +226,7 @@ fun WalletsScreen(sessionManager: SessionManager, navController: NavController) 
                         enabled = !isSubmitting
                     )
 
-                    // Pilihan Tipe (Sederhana menggunakan baris radio button)
+                    // Pilihan Tipe
                     Text("Tipe Penyimpanan:", style = Typography.labelMedium, color = Slate500)
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -222,7 +239,7 @@ fun WalletsScreen(sessionManager: SessionManager, navController: NavController) 
                         }
                     }
 
-                    // Input Saldo Awal (Gunakan tipe keyboard angka)
+                    // Input Saldo Awal
                     OutlinedTextField(
                         value = initialBalance,
                         onValueChange = { initialBalance = it.replace(Regex("\\D"), "") }, // Bersihkan input otomatis hanya angka
@@ -242,22 +259,31 @@ fun WalletsScreen(sessionManager: SessionManager, navController: NavController) 
                         coroutineScope.launch {
                             isSubmitting = true
                             try {
-                                val payload = CreateWalletRequest(
-                                    name = walletName,
-                                    type = walletType,
-                                    balance = initialBalance.toDoubleOrNull() ?: 0.0
+                                val db = FirebaseFirestore.getInstance()
+                                val isoTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).format(Date())
+                                val balanceVal = initialBalance.toDoubleOrNull() ?: 0.0
+
+                                val newWalletData = hashMapOf(
+                                    "userId" to uid,
+                                    "name" to walletName.trim(),
+                                    "type" to walletType,
+                                    "balance" to balanceVal,
+                                    "createdAt" to isoTime,
+                                    "updatedAt" to isoTime
                                 )
-                                val response = ApiClient.instance.createWallet("Bearer $token", payload)
-                                if (response.isSuccessful && response.body()?.success == true) {
-                                    // Reset & Close
-                                    isDialogOpen = false
-                                    walletName = ""
-                                    walletType = "CASH"
-                                    initialBalance = ""
-                                    fetchWallets() // Refresh List data dompet
-                                }
+
+                                db.collection("wallets").add(newWalletData).await()
+
+                                // Reset state dialog dan tutup popup
+                                isDialogOpen = false
+                                walletName = ""
+                                walletType = "CASH"
+                                initialBalance = ""
+
+                                // Refresh list
+                                fetchWallets()
                             } catch (e: Exception) {
-                                // Gagal kirim API
+                                errorMessage = "Gagal membuat dompet baru."
                             } finally {
                                 isSubmitting = false
                             }
