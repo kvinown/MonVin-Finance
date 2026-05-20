@@ -46,3 +46,8 @@ app/build/
 Thumbs.db
 
 google-services.json
+mobile-app/app/release/app-release.aab
+mobile-app/app/release/app-release.apk
+mobile-app/app/release/baselineProfiles/0/app-release.dm
+mobile-app/app/release/baselineProfiles/1/app-release.dm
+mobile-app/app/release/output-metadata.json
