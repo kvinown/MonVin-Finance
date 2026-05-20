@@ -44,3 +44,5 @@ app/build/
 *.sln
 *.sw?
 Thumbs.db
+
+google-services.json
