@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "132604512966",
+    "project_id": "monvin-finance",
+    "storage_bucket": "monvin-finance.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:132604512966:android:b965642153cbfd97e265c7",
+        "android_client_info": {
+          "package_name": "com.kevin.monvin.finance"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "132604512966-8t8sv551jnmo1pp7t1opl5i4jnisu7q0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kevin.monvin.finance",
+            "certificate_hash": "c4fe5f34b4390b6c2204ce62a3f3da9ea05facaf"
+          }
+        },
+        {
+          "client_id": "132604512966-e5gnst8et5cpgoo0h48a8172lh191pgj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoG0ktRHJx9kGUK1DXsLyCvXl1mK5rlpg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "132604512966-e5gnst8et5cpgoo0h48a8172lh191pgj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

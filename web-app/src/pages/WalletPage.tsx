@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import API from "../services/api";
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, writeBatch } from "firebase/firestore";
+import { db } from "../config/firebase";
+import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Modal } from "../components/Modal";
 import { Plus, ArrowRightLeft, CreditCard, Wallet as WalletIcon, Trash2 } from "lucide-react";
@@ -13,6 +15,7 @@ interface Wallet {
 }
 
 export const WalletPage: React.FC = () => {
+	const { user } = useAuth();
 	const { showToast } = useToast();
 	const [wallets, setWallets] = useState<Wallet[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
@@ -29,11 +32,21 @@ export const WalletPage: React.FC = () => {
 
 	const formatIDR = (num: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num);
 
+	// 1. FUNGSI LOAD DATA DOMPET DARI FIREBASE
 	const fetchWallets = async () => {
-		setIsLoading(true);
+		if (!user) return;
 		try {
-			const res = await API.get("/wallets");
-			setWallets(res.data.data);
+			const q = query(collection(db, "wallets"), where("userId", "==", user.id));
+			const querySnapshot = await getDocs(q);
+
+			const fetchedWallets: Wallet[] = [];
+			querySnapshot.forEach((doc) => {
+				fetchedWallets.push({ id: doc.id, ...doc.data() } as Wallet);
+			});
+
+			// Urutkan manual berdasarkan nama
+			fetchedWallets.sort((a, b) => a.name.localeCompare(b.name));
+			setWallets(fetchedWallets);
 		} catch (err) {
 			showToast("Gagal memuat data dompet.", "error");
 		} finally {
@@ -43,31 +56,71 @@ export const WalletPage: React.FC = () => {
 
 	useEffect(() => {
 		fetchWallets();
-	}, []);
+	}, [user]);
 
-	// --- Handlers ---
+	// 2. FUNGSI TAMBAH DOMPET BARU
 	const handleAddWallet = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!newWallet.name) return showToast("Nama dompet wajib diisi", "error");
+
 		setIsSubmitting(true);
 		try {
-			await API.post("/wallets", newWallet);
-			showToast("Dompet baru berhasil ditambahkan!", "success");
+			await addDoc(collection(db, "wallets"), {
+				userId: user?.id,
+				name: newWallet.name,
+				type: newWallet.type,
+				balance: Number(newWallet.balance),
+				isActive: true,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			});
+
+			showToast("Dompet berhasil ditambahkan!", "success");
 			setIsAddModalOpen(false);
 			setNewWallet({ name: "", type: "CASH", balance: 0 });
-			fetchWallets();
-		} catch (err: any) {
-			showToast(err.message || "Gagal menambahkan dompet.", "error");
+			fetchWallets(); // Refresh data
+		} catch (err) {
+			showToast("Gagal menambahkan dompet.", "error");
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
 
+	// 3. FUNGSI TRANSFER ANTAR DOMPET (Menggunakan writeBatch)
 	const handleTransfer = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (transferData.sourceWalletId === transferData.destinationWalletId) {
+			return showToast("Dompet asal dan tujuan tidak boleh sama.", "error");
+		}
+		if (transferData.amount <= 0) {
+			return showToast("Nominal transfer tidak valid.", "error");
+		}
+
 		setIsSubmitting(true);
 		try {
-			await API.post("/wallets/transfer", transferData);
-			showToast("Transfer saldo berhasil!", "success");
+			const sourceWallet = wallets.find((w) => w.id === transferData.sourceWalletId);
+			const destWallet = wallets.find((w) => w.id === transferData.destinationWalletId);
+
+			if (!sourceWallet || !destWallet) throw new Error("Dompet tidak ditemukan");
+			if (sourceWallet.balance < transferData.amount) throw new Error("Saldo dompet asal tidak mencukupi");
+
+			// Menggunakan Batch agar jika salah satu gagal, semuanya dibatalkan
+			const batch = writeBatch(db);
+			const sourceRef = doc(db, "wallets", sourceWallet.id);
+			const destRef = doc(db, "wallets", destWallet.id);
+
+			batch.update(sourceRef, {
+				balance: sourceWallet.balance - transferData.amount,
+				updatedAt: new Date().toISOString(),
+			});
+			batch.update(destRef, {
+				balance: destWallet.balance + transferData.amount,
+				updatedAt: new Date().toISOString(),
+			});
+
+			await batch.commit();
+
+			showToast("Transfer berhasil dicatat!", "success");
 			setIsTransferModalOpen(false);
 			setTransferData({ sourceWalletId: "", destinationWalletId: "", amount: 0 });
 			fetchWallets();
@@ -78,16 +131,18 @@ export const WalletPage: React.FC = () => {
 		}
 	};
 
+	// 4. FUNGSI HAPUS DOMPET
 	const handleDeleteWallet = async () => {
 		if (!walletToDelete) return;
+
 		setIsSubmitting(true);
 		try {
-			await API.delete(`/wallets/${walletToDelete.id}`);
-			showToast("Dompet berhasil dihapus (Soft Delete).", "success");
+			await deleteDoc(doc(db, "wallets", walletToDelete.id));
+			showToast(`Dompet ${walletToDelete.name} dihapus.`, "success");
 			setWalletToDelete(null);
 			fetchWallets();
-		} catch (err: any) {
-			showToast(err.message || "Gagal menghapus dompet.", "error");
+		} catch (err) {
+			showToast("Gagal menghapus dompet.", "error");
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -95,85 +150,90 @@ export const WalletPage: React.FC = () => {
 
 	if (isLoading) {
 		return (
-			<div className="flex h-full items-center justify-center">
-				<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 dark:border-slate-100"></div>
+			<div className="h-full w-full flex items-center justify-center">
+				<div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-900 dark:border-slate-100"></div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="max-w-6xl mx-auto space-y-6">
-			{/* Header & Aksi */}
-			<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+		<div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
+			{/* HEADER */}
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 				<div>
-					<h2 className="text-xl font-bold font-display tracking-wide">Ekosistem Kas</h2>
-					<p className="text-sm text-slate-500 mt-1">Kelola rekening dan dompet tunai Anda di sini.</p>
+					<h1 className="text-2xl font-bold font-display tracking-wide text-slate-900 dark:text-slate-100">Manajemen Dompet</h1>
+					<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Kelola aset kas, rekening bank, dan dompet digital Anda.</p>
 				</div>
-				<div className="flex gap-3 w-full sm:w-auto">
+				<div className="flex gap-3">
 					<button
 						onClick={() => setIsTransferModalOpen(true)}
-						className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold text-sm rounded-lg transition-colors">
-						<ArrowRightLeft size={16} /> Transfer Saldo
+						className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-sm active:scale-95">
+						<ArrowRightLeft size={16} />
+						<span className="hidden sm:inline">Transfer</span>
 					</button>
 					<button
 						onClick={() => setIsAddModalOpen(true)}
-						className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors shadow-sm shadow-blue-500/20">
-						<Plus size={16} /> Tambah Dompet
+						className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold text-sm rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20 active:scale-95">
+						<Plus size={16} />
+						<span className="hidden sm:inline">Tambah Dompet</span>
 					</button>
 				</div>
 			</div>
 
-			{/* Grid Dompet */}
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-				{wallets.map((wallet) => (
-					<div
-						key={wallet.id}
-						className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-shadow relative group">
-						<div className="flex justify-between items-start mb-4">
-							<div className={`p-3 rounded-xl ${wallet.type === "BANK" ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"}`}>
-								{wallet.type === "BANK" ? <CreditCard size={24} /> : <WalletIcon size={24} />}
+			{/* GRID DOMPET */}
+			{wallets.length === 0 ? (
+				<div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed">
+					<WalletIcon
+						size={48}
+						className="mx-auto text-slate-300 dark:text-slate-700 mb-4"
+					/>
+					<h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">Belum Ada Dompet</h3>
+					<p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">Anda belum mendaftarkan aset finansial apa pun. Tambahkan dompet pertama Anda untuk mulai melacak keuangan.</p>
+					<button
+						onClick={() => setIsAddModalOpen(true)}
+						className="mt-6 px-6 py-2.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold text-sm rounded-lg transition-transform active:scale-95">
+						Buat Dompet Pertama
+					</button>
+				</div>
+			) : (
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+					{wallets.map((wallet) => (
+						<div
+							key={wallet.id}
+							className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative group transition-colors duration-300">
+							<div className="flex justify-between items-start mb-4">
+								<div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400">{wallet.type === "BANK" ? <CreditCard size={20} /> : <WalletIcon size={20} />}</div>
+								<button
+									onClick={() => setWalletToDelete(wallet)}
+									className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors md:opacity-0 md:group-hover:opacity-100">
+									<Trash2 size={16} />
+								</button>
 							</div>
-
-							<button
-								onClick={() => setWalletToDelete(wallet)}
-								className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-								title="Hapus Dompet">
-								<Trash2 size={16} />
-							</button>
+							<h3 className="font-bold text-slate-900 dark:text-slate-100 text-lg mb-1">{wallet.name}</h3>
+							<p className="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-4">{wallet.type}</p>
+							<div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+								<p className="text-xs text-slate-500 mb-1">Total Saldo</p>
+								<p className="text-xl font-bold font-display text-slate-900 dark:text-slate-100">{formatIDR(wallet.balance)}</p>
+							</div>
 						</div>
-
-						<div>
-							<div className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-1">{wallet.type}</div>
-							<div className="font-semibold text-lg truncate mb-3">{wallet.name}</div>
-							<div className="text-2xl font-bold font-display tracking-tight text-slate-900 dark:text-slate-100">{formatIDR(wallet.balance)}</div>
-						</div>
-					</div>
-				))}
-
-				{wallets.length === 0 && (
-					<div className="col-span-full py-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-						<WalletIcon
-							size={48}
-							className="mx-auto text-slate-300 mb-4"
-						/>
-						<p className="text-slate-500 font-medium">Belum ada dompet yang terdaftar.</p>
-					</div>
-				)}
-			</div>
+					))}
+				</div>
+			)}
 
 			{/* MODAL 1: Tambah Dompet */}
 			<Modal
 				isOpen={isAddModalOpen}
 				onClose={() => setIsAddModalOpen(false)}
-				title="Tambah Dompet Baru">
+				title="Tambah Aset Baru">
 				<form
 					onSubmit={handleAddWallet}
 					className="space-y-4">
 					<div>
-						<label className="label-base">Nama Dompet (Mis: BCA, BNI, Dompet Tunai)</label>
+						<label className="label-base">Nama Dompet / Rekening</label>
 						<input
 							type="text"
 							required
+							placeholder="BCA / Gopay / Dompet Tunai"
 							className="input-base"
 							value={newWallet.name}
 							onChange={(e) => setNewWallet({ ...newWallet, name: e.target.value })}
@@ -181,20 +241,20 @@ export const WalletPage: React.FC = () => {
 						/>
 					</div>
 					<div>
-						<label className="label-base">Tipe Penyimpanan</label>
+						<label className="label-base">Kategori Aset</label>
 						<select
 							className="input-base"
 							value={newWallet.type}
 							onChange={(e) => setNewWallet({ ...newWallet, type: e.target.value })}
 							disabled={isSubmitting}>
-							<option value="CASH">Tunai / Dompet Fisik</option>
-							<option value="BANK">Rekening Bank / E-Wallet</option>
+							<option value="CASH">Uang Tunai (Cash)</option>
+							<option value="BANK">Rekening Bank</option>
+							<option value="E_WALLET">E-Wallet</option>
+							<option value="INVESTMENT">Investasi</option>
 						</select>
 					</div>
-					{/* Ganti input number saldo lama dengan ini */}
 					<CurrencyInput
 						label="Saldo Awal"
-						required
 						value={newWallet.balance}
 						onChange={(val) => setNewWallet({ ...newWallet, balance: val })}
 						disabled={isSubmitting}
@@ -202,9 +262,9 @@ export const WalletPage: React.FC = () => {
 					<div className="pt-2">
 						<button
 							type="submit"
-							className="btn-slate-primary"
+							className="btn-slate-primary h-10 flex items-center justify-center w-full"
 							disabled={isSubmitting}>
-							{isSubmitting ? "Menyimpan..." : "Simpan Dompet"}
+							{isSubmitting ? "Menyimpan..." : "Simpan Aset"}
 						</button>
 					</div>
 				</form>
@@ -214,51 +274,58 @@ export const WalletPage: React.FC = () => {
 			<Modal
 				isOpen={isTransferModalOpen}
 				onClose={() => setIsTransferModalOpen(false)}
-				title="Transfer Antar Dompet">
+				title="Mutasi Antar Dompet">
 				<form
 					onSubmit={handleTransfer}
 					className="space-y-4">
-					<div>
-						<label className="label-base">Dari Dompet (Sumber)</label>
-						<select
-							required
-							className="input-base"
-							value={transferData.sourceWalletId}
-							onChange={(e) => setTransferData({ ...transferData, sourceWalletId: e.target.value })}
-							disabled={isSubmitting}>
-							<option value="">Pilih Dompet Sumber...</option>
-							{wallets.map((w) => (
+					<div className="grid grid-cols-2 gap-4">
+						<div>
+							<label className="label-base text-red-600 dark:text-red-400">Tarik dari</label>
+							<select
+								required
+								className="input-base"
+								value={transferData.sourceWalletId}
+								onChange={(e) => setTransferData({ ...transferData, sourceWalletId: e.target.value })}
+								disabled={isSubmitting}>
 								<option
-									key={w.id}
-									value={w.id}>
-									{w.name} (Sisa: {formatIDR(w.balance)})
+									value=""
+									disabled>
+									Pilih Sumber
 								</option>
-							))}
-						</select>
-					</div>
-					<div>
-						<label className="label-base">Ke Dompet (Tujuan)</label>
-						<select
-							required
-							className="input-base"
-							value={transferData.destinationWalletId}
-							onChange={(e) => setTransferData({ ...transferData, destinationWalletId: e.target.value })}
-							disabled={isSubmitting}>
-							<option value="">Pilih Dompet Tujuan...</option>
-							{wallets
-								.filter((w) => w.id !== transferData.sourceWalletId)
-								.map((w) => (
+								{wallets.map((w) => (
 									<option
 										key={w.id}
 										value={w.id}>
 										{w.name}
 									</option>
 								))}
-						</select>
+							</select>
+						</div>
+						<div>
+							<label className="label-base text-green-600 dark:text-green-400">Kirim ke</label>
+							<select
+								required
+								className="input-base"
+								value={transferData.destinationWalletId}
+								onChange={(e) => setTransferData({ ...transferData, destinationWalletId: e.target.value })}
+								disabled={isSubmitting}>
+								<option
+									value=""
+									disabled>
+									Pilih Tujuan
+								</option>
+								{wallets.map((w) => (
+									<option
+										key={w.id}
+										value={w.id}>
+										{w.name}
+									</option>
+								))}
+							</select>
+						</div>
 					</div>
-					{/* Ganti input number nominal transfer lama dengan ini */}
 					<CurrencyInput
-						label="Nominal Transfer"
+						label="Nominal Mutasi"
 						required
 						value={transferData.amount}
 						onChange={(val) => setTransferData({ ...transferData, amount: val })}
@@ -267,7 +334,7 @@ export const WalletPage: React.FC = () => {
 					<div className="pt-2">
 						<button
 							type="submit"
-							className="w-full py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+							className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
 							disabled={isSubmitting}>
 							{isSubmitting ? "Memproses..." : "Kirim Saldo"}
 						</button>
@@ -294,11 +361,10 @@ export const WalletPage: React.FC = () => {
 							Batal
 						</button>
 						<button
-							type="button"
 							onClick={handleDeleteWallet}
 							className="flex-1 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
 							disabled={isSubmitting}>
-							{isSubmitting ? "Menghapus..." : "Ya, Hapus Dompet"}
+							{isSubmitting ? "Menghapus..." : "Hapus Permanen"}
 						</button>
 					</div>
 				</div>
